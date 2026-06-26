@@ -1,0 +1,104 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace = "com.zoon.agri.app"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "com.zoon.agri.app"
+        minSdkVersion 22
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 2
+        versionName "1.1"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            storeFile file('release-key.jks')
+            storePassword 'zone2026'
+            keyAlias 'zone-key'
+            keyPassword 'zone2026'
+        }
+    }
+    def localProperties = new Properties()
+    def localPropertiesFile = rootProject.file('local.properties')
+    if (localPropertiesFile.exists()) {
+        localProperties.load(new FileInputStream(localPropertiesFile))
+    }
+
+    task generateReleaseKeystore(type: Exec) {
+        def keystoreFile = file('release-key.jks')
+        workingDir projectDir
+        commandLine 'keytool', '-genkey', '-v', '-keystore', 'release-key.jks', 
+                    '-keyalg', 'RSA', '-keysize', '2048', '-validity', '10000', 
+                    '-alias', 'zone-key', '-storepass', 'zone2026', '-keypass', 'zone2026', 
+                    '-dname', 'CN=Zone, OU=Agri, O=Kilimanjaro, L=Omdurman, S=Khartoum, C=SD'
+        onlyIf { !keystoreFile.exists() }
+    }
+
+    // Automatically generate keystore if missing before build
+    afterEvaluate {
+        if (tasks.findByName('generateReleaseKeystore')) {
+            tasks.matching { it.name.startsWith('bundle') || it.name.startsWith('assemble') }.all {
+                dependsOn generateReleaseKeystore
+            }
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            
+            // Injecting Secrets into BuildConfig
+            buildConfigField "String", "GEMINI_API_KEY", "\"${localProperties.getProperty('GEMINI_API_KEY')}\""
+            buildConfigField "String", "DRIVE_SCRIPT_URL", "\"${localProperties.getProperty('DRIVE_SCRIPT_URL')}\""
+        }
+        debug {
+            buildConfigField "String", "GEMINI_API_KEY", "\"${localProperties.getProperty('GEMINI_API_KEY')}\""
+            buildConfigField "String", "DRIVE_SCRIPT_URL", "\"${localProperties.getProperty('DRIVE_SCRIPT_URL')}\""
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
+    implementation "androidx.activity:activity:$androidxActivityVersion"
+    implementation "androidx.fragment:fragment:$androidxFragmentVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

@@ -1,0 +1,25 @@
+name: zone_agri_app
+description: "A new Flutter project mapping for Zone Agribusiness."
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  camera: ^0.11.0 # متوافق مع Android 14
+  path_provider: ^2.1.2
+  image_picker: ^1.0.7
+  http: ^1.2.0
+  google_generative_ai: ^0.4.0 # مكتبة Gemini الرسمية
+  permission_handler: ^11.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

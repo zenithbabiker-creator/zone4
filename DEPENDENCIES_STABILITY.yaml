@@ -1,0 +1,32 @@
+# This file acts as a compatibility reference for Google IDX and Android Studio.
+# It ensures all library versions are strictly aligned to prevent "wrapping" errors.
+
+project_metadata:
+  name: ZoneAgriApp
+  type: hybrid_app_capacitor
+  framework: Vite-React-TS
+  capacitor_version: 6.0.0
+  target_platform: Android (API 34)
+
+# Master Versioning (The "Golden" versions that won't break)
+dependencies_stability:
+  - capacitor_core: 6.0.0
+  - capacitor_android: 6.0.0
+  - capacitor_cli: 6.0.0
+  - android_gradle_plugin: 8.2.1
+  - gradle_wrapper: 8.2.1
+  - kotlin_version: 1.9.10
+  - java_version: JDK 17 (Nix Package jdk17)
+
+# Build & Signature Configs (For Google Play AAB)
+signing_config:
+  keystore_type: JKS
+  key_alias: zone-key
+  store_pass: zone2026
+  key_pass: zone2026
+  bundle_format: AAB
+
+# Deployment Steps for IDX Terminal:
+# 1. npm run build
+# 2. npx cap sync android
+# 3. cd android && ./gradlew bundleRelease
