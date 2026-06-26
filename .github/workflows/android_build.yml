@@ -1,0 +1,165 @@
+name: Build Android Production App
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Generate APK and AAB Packages
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. جلب الأكواد الحديثة وأيقونتك الرسمية النظيفة من المستودع بعد الـ Push من جوجل استوديو
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+
+    # 2. إعداد بيئة جافا الحديثة والمستقرة (JDK 21) لضمان توافق محرك Gradle
+    - name: Set up Java Development Kit (JDK 21)
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'zulu'
+
+    # 3. إعداد بيئة Node.js لتشغيل أدوات التجميع ومحرك كاباسيتور
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    # 4. تثبيت مكتبات وحزم المشروع الأساسية
+    - name: Install Project Dependencies
+      run: npm install --legacy-peer-deps
+
+    # 5. بناء كود الويب المحدث لضمان دمج آخر التعديلات والملفات المحدثة
+    - name: Build Web Application
+      run: |
+        npm run build --if-present
+
+    # 6. مزامنة ونقل كود الويب الحديث إلى منصة الأندرويد الأصلية
+    - name: Sync Capacitor to Android Platform
+      run: |
+        npx cap sync android
+
+    # 7. تطبيق الإعدادات المتوافقة وسحق الملفات المتكررة والتالفة تلقائياً في خلفية النظام
+    - name: Enforce Compatible Configuration and Fix Source Code
+      run: |
+        # فرض إصدارات مكتبة أندرويد المستقرة لتجنب تعارضات كاباسيتور
+        cat << 'EOF' >> android/build.gradle
+        subprojects {
+            configurations.all {
+                resolutionStrategy.force 'androidx.core:core-ktx:1.13.1'
+                resolutionStrategy.force 'androidx.core:core:1.13.1'
+            }
+        }
+        EOF
+        
+        # تحديث قيمة minSdkVersion لتتوافق مع معايير حزم أندرويد الحديثة
+        if [ -f android/variables.gradle ]; then
+          sed -i 's/minSdkVersion = .*/minSdkVersion = 24/g' android/variables.gradle
+        fi
+        sed -i 's/minSdkVersion .*/minSdkVersion 24/g' android/app/build.gradle
+        
+        # تعديل صلاحية دالة onStart في كلاس MainActivity لمنع انهيار التجميع البرمجي
+        MAIN_ACTIVITY_PATH="android/app/src/main/java/com/zoon/agri/app/MainActivity.java"
+        if [ -f "$MAIN_ACTIVITY_PATH" ]; then
+          sed -i 's/protected void onStart()/public void onStart()/g' "$MAIN_ACTIVITY_PATH"
+        fi
+
+        # إزالة ملفات الخلفية المتجهة الافتراضية التالفة لضمان البناء النظيف المستند لأيقونتك الحقيقية
+        rm -f android/app/src/main/res/values/ic_launcher_background.xml
+        rm -f android/app/src/main/res/drawable/ic_launcher_background.xml
+
+    # 8. تطبيق آلية "الحشو الذكي" على ملف icon.png لمنع التكبير وقص أطراف الشعار الهندسي
+    - name: Process, Pad, and Deploy Main Branded Icon
+      run: |
+        echo "Installing ImageMagick system utilities..."
+        sudo apt-get update && sudo apt-get install -y imagemagick
+        
+        # التحقق الصارم من وجود ملف الأيقونة الذي قمت بتحويله ورفعه في المجلد الرئيسي
+        if [ -f "icon.png" ]; then
+          echo "Main icon.png detected successfully in the root directory."
+          
+          # أخذ شعارك الأصلي بدقة 1024x1024، وتصغيره ليحتل 75% من المساحة في المنتصف،
+          # مع إحاطته بحشو (Padding) أبيض نقي بمقاس معيارى 512x512 لمنع قصه بواسطة قناع أندرويد التكيفي.
+          convert icon.png -resize 384x384 -gravity center -background "#FFFFFF" -extent 512x512 -strip png24:master_clean.png
+        else
+          echo "Critical Error: icon.png not found in the root directory!"
+          exit 1
+        fi
+
+        # دالة تجميعية لتوزيع ونشر الأيقونة بالمقاسات والمسافات الجديدة لمنع التكبير
+        deploy_icon_dimension() {
+          local folder_name="$1"
+          local dimension="$2"
+          local target_dir="android/app/src/main/res/$folder_name"
+          
+          mkdir -p "$target_dir"
+          echo "Injecting padded binary icons into $folder_name (${dimension}x${dimension})..."
+          
+          convert master_clean.png -resize ${dimension}x${dimension} -strip png24:"$target_dir/ic_launcher.png"
+          convert master_clean.png -resize ${dimension}x${dimension} -strip png24:"$target_dir/ic_launcher_round.png"
+          convert master_clean.png -resize ${dimension}x${dimension} -strip png24:"$target_dir/ic_launcher_foreground.png"
+          
+          chmod 664 "$target_dir"/ic_launcher*.png
+        }
+
+        # تعميم ونشر الأيقونة الرسمية لزون على الكثافات الخمس المعتمدة لجميع أجهزة أندرويد
+        deploy_icon_dimension "mipmap-mdpi" 48
+        deploy_icon_dimension "mipmap-hdpi" 72
+        deploy_icon_dimension "mipmap-xhdpi" 96
+        deploy_icon_dimension "mipmap-xxhdpi" 144
+        deploy_icon_dimension "mipmap-xxxhdpi" 192
+        
+        # ربط الشاشة الترحيبية (Splash Screen) بهويتك البصرية الحقيقية المستخرجة من الشعار
+        find android/app/src/main/res/ -name "splash.png" 2>/dev/null | while read -r splash; do
+          if [ -f "$splash" ]; then
+            convert -size 1080x1920 xc:"#FFFFFF" -gravity center -draw "image over 0,-150 300,300 'master_clean.png'" -fill "#2E7D32" -font "DejaVu-Sans-Bold" -pointsize 50 -gravity center -draw "text 0,200 'زون للخدمات الزراعية'" -strip png24:temp_splash.png
+            rm -f "$splash"
+            mkdir -p "$(dirname "$splash")"
+            mv temp_splash.png "$splash"
+            chmod 664 "$splash"
+          fi
+        done
+
+        rm -f master_clean.png
+        echo "android.crunchPngs=false" >> android/gradle.properties
+
+    # 9. إعداد أداة Gradle المركزية بالنسخة 8.4 المستقرة لبناء الحزم دون تعارضات
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.4'
+
+    # 10. تنظيف الكاش بالكامل لضمان بناء التطبيق بالملفات والهوية الرسمية النظيفة
+    - name: Clean Android Build Cache
+      run: gradle clean
+      working-directory: ./android
+
+    # 11. بناء وتجميع ملف الـ APK بالأيقونة الرسمية الحقيقية والشاشات الترحيبية المحدثة لغرض التجربة
+    - name: Compile and Build APK
+      run: gradle assembleDebug
+      working-directory: ./android
+
+    # 12. بناء وتجميع حزمة الـ AAB (App Bundle) الرسمية المخصصة للرفع المباشر إلى المتجر
+    - name: Compile and Build App Bundle (AAB)
+      run: gradle bundleRelease
+      working-directory: ./android
+
+    # 13. استخراج وحفظ ملف الـ APK في الـ Artifacts للتحميل المباشر والتثبيت الفوري
+    - name: Archive and Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: GoogleStudio-App-Debug-APK
+        path: android/app/build/outputs/apk/debug/app-debug.apk
+        retention-days: 7
+
+    # 14. استخراج وحفظ ملف الـ AAB في الـ Artifacts لإصدار ونشر التطبيق في متجر جوجل بلاي
+    - name: Archive and Upload AAB
+      uses: actions/upload-artifact@v4
+      with:
+        name: GoogleStudio-App-Production-AAB
+        path: android/app/build/outputs/bundle/release/app-release*.aab
+        retention-days: 7
